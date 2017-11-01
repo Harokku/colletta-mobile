@@ -1,0 +1,20 @@
+{
+  "name": "colletta-mobile",
+  "version": "0.0.0",
+  "description": "Frontend mobile Colletta Alimentare Area 2 CRI Varese",
+  "author": "Harokku",
+  "private": true,
+  "main": "node_modules/expo/AppEntry.js",
+  "dependencies": {
+    "apollo-client": "^1.9.3",
+    "expo": "^21.0.0",
+    "graphql-tag": "^2.4.2",
+    "moment": "^2.19.1",
+    "prop-types": "^15.6.0",
+    "react": "16.0.0-alpha.12",
+    "react-apollo": "^1.4.16",
+    "react-native": "https://github.com/expo/react-native/archive/sdk-21.0.2.tar.gz",
+    "react-navigation": "^1.0.0-beta.13",
+    "subscriptions-transport-ws": "^0.8.3"
+  }
+}
