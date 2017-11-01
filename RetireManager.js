@@ -1,6 +1,7 @@
 import React, {Component} from 'react'
 import {View, Text, Button} from 'react-native'
 import {graphql, gql, compose} from 'react-apollo';
+import {KeepAwake, Constants, Location, Permissions} from 'expo'
 
 import VehicleLoad from './VehicleLoad'
 import MarketsList from './MarketsList'
@@ -35,6 +36,7 @@ const styles = {
 
 const kgPerPkg = 20;
 
+// TODO: Clean up the code mess
 class RetireManager extends Component {
   constructor(props) {
     super(props);
@@ -43,6 +45,9 @@ class RetireManager extends Component {
       selectedVehicle: {},
       loadInput: 0,
       showNewMessage: false,
+      location: null,
+      milad: null,
+      errorMessage: null,
     }
   }
 
@@ -55,8 +60,6 @@ class RetireManager extends Component {
   }
 
   handleLoadInputChange = (loadInput, measureUnit) => {
-    console.log(loadInput)
-    console.log(measureUnit)
     const convertedInput = measureUnit === 'pkg' ? loadInput * kgPerPkg : loadInput;
     const parsedInput = parseFloat(convertedInput);
     if (!isNaN(parsedInput) && convertedInput !== '' || convertedInput === 0) {
@@ -80,12 +83,12 @@ class RetireManager extends Component {
     }
   }
 
+
   handleLoadSubmit = async () => {
     await this.props.mutate({
       variables: {
         loadedQty: this.state.loadInput,
         tripNumber: this.props.vehicleData.Vehicle.collects[0].tripNumber,
-        collectedAt: new Date(),
         supermarket: this.state.selectedMarket,
         vehicle: this.state.selectedVehicle.id,
         actualLoad: this.props.vehicleData.Vehicle.actualLoad + this.state.loadInput
@@ -97,6 +100,21 @@ class RetireManager extends Component {
         })
       )
 
+  }
+
+  updateVehiclePosition = async (coords) => {
+    try {
+      await this.props.updateVehiclePosition({
+        variables: {
+          vehicle: this.state.selectedVehicle.id,
+          lat: coords.latitude,
+          lon: coords.longitude,
+          speed: coords.speed,
+        }
+      })
+    } catch (err) {
+      console.log(err)
+    }
   }
 
   // TODO: Implement unload method
@@ -140,7 +158,7 @@ class RetireManager extends Component {
           }
       `,
       updateQuery: (previous, {subscriptionData}) => {
-        if(subscriptionData.data.InstaMessage.node.vehicle.id === this.state.selectedVehicle.id) {
+        if (subscriptionData.data.InstaMessage.node.vehicle.id === this.state.selectedVehicle.id) {
           const newAllMessages = [
             subscriptionData.data.InstaMessage.node,
             ...previous.allInstaMessages,
@@ -160,9 +178,41 @@ class RetireManager extends Component {
     this.props.navigation.navigate('Messages', {selectedVehicle: this.state.selectedVehicle.id})
   }
 
+  componentWillMount() {
+    //  this._getLocationAsync();
+    if (this.askForPermission() === 'granted') {
+      const testlocation = Expo.Location.watchPositionAsync({
+        enableHighAccuracy: true,
+        distanceInterval: 1000
+      }, (loc) => {
+        console.log(loc)
+        if (loc.coords) {
+          this.setState({
+            milad: loc,
+            location: loc.coords.speed,
+          })
+          if (this.state.selectedVehicle) {
+            this.updateVehiclePosition(loc.coords)
+          }
+          console.log(loc.coords.heading)
+        }
+        else {
+          console.log("nooooooooooooooooo loc");
+        }
+      });
+    }
+  }
+
+  askForPermission = async () => {
+    const {status} = await Permissions.askAsync(Permissions.LOCATION);
+    return status
+  }
+
   componentDidMount() {
     this.subscribeToNewMessages();
   }
+
+
 
   render() {
     const {params} = this.props.navigation.state
@@ -186,9 +236,16 @@ class RetireManager extends Component {
     const vehicle = this.props.vehicleData.Vehicle;
     const messages = this.props.messageData.allInstaMessages;
 
+    let text = 'Waiting..';
+    let milad = "milad location...";
+    text = this.state.location
+    milad = JSON.stringify(this.state.milad);
+
     return (
       <View style={styles.container}>
-        {console.log(this.state.selectedVehicle.id)}
+        <KeepAwake/>
+        <Text>{text}</Text>
+        <Text>{milad}</Text>
         <Button
           onPress={this.handleShowMessages}
           title='Mostra messaggi'/>
@@ -196,7 +253,8 @@ class RetireManager extends Component {
         <Text style={styles.mainText}>Mezzo: {vehicle.radioCode}</Text>
         <VehicleLoad vehicle={vehicle}/>
         <LoadInput measureUnit={'kg'} text={this.state.loadInput.toString()} onTextChange={this.handleLoadInputChange}/>
-        <LoadInput measureUnit={'pkg'} text={(this.state.loadInput / kgPerPkg).toString()} onTextChange={this.handleLoadInputChange}/>
+        <LoadInput measureUnit={'pkg'} text={(this.state.loadInput / kgPerPkg).toString()}
+                   onTextChange={this.handleLoadInputChange}/>
         <MarketsList selectedMarket={this.state.selectedMarket} onSelMarketChange={this.handleMarketSelection}/>
         <View style={styles.buttonsItem}>
           <Button
@@ -262,19 +320,32 @@ const SET_MESSAGE_READED = gql`
     }
 `
 
+const UPDATE_VEHICLE_POSITION = gql`
+  mutation UpdateVehicleMutation ($vehicle: ID!, $lat: Float!, $lon: Float!, $speed:Float!) {
+      updateVehicle(
+          id: $vehicle
+          latitude: $lat
+          longitude: $lon
+          speed: $speed
+      ) {
+          id
+      }
+  }
+  
+`
+
 const POST_COLLECT_MUTATION = gql`
-    mutation CreateCollectMutation ($loadedQty: Float!, $tripNumber: Int!, $collectedAt: DateTime!, $supermarket: ID!, $vehicle: ID!, $actualLoad: Float!) {
+    mutation CreateCollectMutation ($loadedQty: Float!, $tripNumber: Int!, $supermarket: ID!, $vehicle: ID!, $actualLoad: Float!) {
         createCollect(
             loadedQty: $loadedQty,
             tripNumber: $tripNumber,
-            collectedAt: $collectedAt,
             supermarketId: $supermarket,
             vehicleId: $vehicle,
         ) {
             id
             loadedQty
             tripNumber
-            collectedAt
+            createdAt
             supermarket {
                 city
                 address
@@ -295,22 +366,21 @@ const POST_COLLECT_MUTATION = gql`
 
 // TODO: Complete mutation with collect adn vehicle data reset
 const POST_DELIVERY_MUTAYION = gql`
-  mutation CreateDeliveryMutation ($vehicle: ID!, $deliveredQty: Float!, $tripNumber: Int!, $deliveredAt: DateTime!) {
-      createDelivery(
-          vehicleId: $vehicle,
-          deliveredQty: $deliveredQty,
-          tripNumber: $tripNumber,
-          deliveredAt: $deliveredAt,
-      ) {
-          id
-          deliveredAt
-          deliveredQty
-          tripNumber
-          vehicle {
-              id
-          }
-      }
-  }
+    mutation CreateDeliveryMutation ($vehicle: ID!, $deliveredQty: Float!, $tripNumber: Int!) {
+        createDelivery(
+            vehicleId: $vehicle,
+            deliveredQty: $deliveredQty,
+            tripNumber: $tripNumber,
+        ) {
+            id
+            createdAt
+            deliveredQty
+            tripNumber
+            vehicle {
+                id
+            }
+        }
+    }
 `
 
 
@@ -323,6 +393,7 @@ export default compose(
     name: 'messageData',
     options: (ownProps) => ({variables: {id: ownProps.navigation.state.params.selectedVehicle}})
   }),
+  graphql(UPDATE_VEHICLE_POSITION, {name: 'updateVehiclePosition'}),
   graphql(SET_MESSAGE_READED, {name: 'setMessageReaded'}),
   graphql(POST_COLLECT_MUTATION),
 )(RetireManager)

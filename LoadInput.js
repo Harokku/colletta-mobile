@@ -25,7 +25,6 @@ function LoadInput(props) {
   return(
     <View>
       <Text>Inserisci il totale caricato in {measureUnitsEnum[measureUnit]}</Text>
-      {console.log(measureUnit)}
       <TextInput
         style={styles.textInput}
         caretHidden={false}
