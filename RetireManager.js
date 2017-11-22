@@ -35,6 +35,7 @@ const styles = {
 }
 
 const kgPerPkg = 20;
+const hQID = 'cj916fo3w4oxa018137w05hh3';
 
 // TODO: Clean up the code mess
 class RetireManager extends Component {
@@ -85,7 +86,7 @@ class RetireManager extends Component {
 
 
   handleLoadSubmit = async () => {
-    await this.props.mutate({
+    await this.props.postCollectMutation({
       variables: {
         loadedQty: this.state.loadInput,
         tripNumber: this.props.vehicleData.Vehicle.collects[0].tripNumber,
@@ -100,6 +101,44 @@ class RetireManager extends Component {
         })
       )
 
+  }
+
+  // Mutation for vehicle unload at delivery
+  // Drop load at delivery point and create new DB state for new trip
+  // FIXME: Check promise rejection
+  handleUnloadSubmit = async () => {
+    /*console.log(this.state.selectedVehicle)
+    console.log(this.props.vehicleData)
+    console.log(hQID)
+    console.log(this.props.vehicleData.Vehicle.collects[0].tripNumber + 1)*/
+    // Put actual load in vehicle's delivery stack
+    try {
+      await this.props.postDeliveryMutation({
+        variables: {
+          vehicleId: this.state.selectedVehicle.id,
+          deliveredQty: this.props.vehicleData.Vehicle.actualLoad,
+          tripNumber: this.props.vehicleData.Vehicle.collects[0].tripNumber,
+        }
+      })
+      // Reset vehicle load and initialize a new trip
+      await this.props.postCollectMutation({
+        variables: {
+          loadedQty: 0, // New trip start with no load
+          tripNumber: this.props.vehicleData.Vehicle.collects[0].tripNumber + 1, // Trip number is incremented
+          supermarket: hQID,  // New trip starting point set to HQ ID
+          vehicle: this.state.selectedVehicle.id,
+          actualLoad: 0,  // Vehicle load is set to 0 since it unloaded al delivery point
+        }
+      })
+        .then(
+          this.setState({
+            loadInput: 0
+          })
+        )
+    } catch (err) {
+      console.log("UnloadSubmit failed, error:")
+      console.log(err)
+    }
   }
 
   updateVehiclePosition = async (coords) => {
@@ -118,9 +157,6 @@ class RetireManager extends Component {
   }
 
   // TODO: Implement unload method
-  handleUnloadSubmit = async () => {
-    return null
-  }
 
   showNewMessage = (messages) => {
     return <InstaMessage message={messages[0]} visible={this.state.showNewMessage}
@@ -178,40 +214,40 @@ class RetireManager extends Component {
     this.props.navigation.navigate('Messages', {selectedVehicle: this.state.selectedVehicle.id})
   }
 
-  componentWillMount() {
+  async componentWillMount() {
     //  this._getLocationAsync();
-    if (this.askForPermission() === 'granted') {
-      const testlocation = Expo.Location.watchPositionAsync({
-        enableHighAccuracy: true,
-        distanceInterval: 1000
-      }, (loc) => {
-        console.log(loc)
-        if (loc.coords) {
-          this.setState({
-            milad: loc,
-            location: loc.coords.speed,
-          })
-          if (this.state.selectedVehicle) {
-            this.updateVehiclePosition(loc.coords)
-          }
-          console.log(loc.coords.heading)
+    await Expo.Font.loadAsync({
+      'Roboto': require('native-base/Fonts/Roboto.ttf'),
+      'Roboto_medium': require('native-base/Fonts/Roboto_medium.ttf'),
+    });
+
+    this.askForPermission()
+    const testlocation = Expo.Location.watchPositionAsync({
+      enableHighAccuracy: true,
+      distanceInterval: 1000
+    }, (loc) => {
+      console.log(loc)
+      if (loc.coords) {
+        if (this.state.selectedVehicle) {
+          this.updateVehiclePosition(loc.coords)
         }
-        else {
-          console.log("nooooooooooooooooo loc");
-        }
-      });
-    }
+      }
+      else {
+        console.log("nooooooooooooooooo loc");
+      }
+    });
+    //}
   }
 
   askForPermission = async () => {
     const {status} = await Permissions.askAsync(Permissions.LOCATION);
+    console.log(status)
     return status
   }
 
   componentDidMount() {
     this.subscribeToNewMessages();
   }
-
 
 
   render() {
@@ -236,16 +272,9 @@ class RetireManager extends Component {
     const vehicle = this.props.vehicleData.Vehicle;
     const messages = this.props.messageData.allInstaMessages;
 
-    let text = 'Waiting..';
-    let milad = "milad location...";
-    text = this.state.location
-    milad = JSON.stringify(this.state.milad);
-
     return (
       <View style={styles.container}>
         <KeepAwake/>
-        <Text>{text}</Text>
-        <Text>{milad}</Text>
         <Button
           onPress={this.handleShowMessages}
           title='Mostra messaggi'/>
@@ -321,17 +350,17 @@ const SET_MESSAGE_READED = gql`
 `
 
 const UPDATE_VEHICLE_POSITION = gql`
-  mutation UpdateVehicleMutation ($vehicle: ID!, $lat: Float!, $lon: Float!, $speed:Float!) {
-      updateVehicle(
-          id: $vehicle
-          latitude: $lat
-          longitude: $lon
-          speed: $speed
-      ) {
-          id
-      }
-  }
-  
+    mutation UpdateVehicleMutation ($vehicle: ID!, $lat: Float!, $lon: Float!, $speed:Float!) {
+        updateVehicle(
+            id: $vehicle
+            latitude: $lat
+            longitude: $lon
+            speed: $speed
+        ) {
+            id
+        }
+    }
+
 `
 
 const POST_COLLECT_MUTATION = gql`
@@ -365,7 +394,7 @@ const POST_COLLECT_MUTATION = gql`
 `
 
 // TODO: Complete mutation with collect adn vehicle data reset
-const POST_DELIVERY_MUTAYION = gql`
+const POST_DELIVERY_MUTATION = gql`
     mutation CreateDeliveryMutation ($vehicle: ID!, $deliveredQty: Float!, $tripNumber: Int!) {
         createDelivery(
             vehicleId: $vehicle,
@@ -395,5 +424,6 @@ export default compose(
   }),
   graphql(UPDATE_VEHICLE_POSITION, {name: 'updateVehiclePosition'}),
   graphql(SET_MESSAGE_READED, {name: 'setMessageReaded'}),
-  graphql(POST_COLLECT_MUTATION),
+  graphql(POST_COLLECT_MUTATION, {name: 'postCollectMutation'}),
+  graphql(POST_DELIVERY_MUTATION, {name: 'postDeliveryMutation'}),
 )(RetireManager)

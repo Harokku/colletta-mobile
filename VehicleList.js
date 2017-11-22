@@ -1,6 +1,7 @@
 import React, {Component} from 'react'
-import { Button, Picker, Text, View} from 'react-native';
-import { graphql, gql } from 'react-apollo';
+import {Picker} from 'react-native';
+import {graphql, gql} from 'react-apollo';
+import {Container, Text, Button, Icon} from 'native-base'
 
 const styles = {
   container: {
@@ -15,7 +16,7 @@ const styles = {
   }
 }
 
-class VehicleList extends Component{
+class VehicleList extends Component {
   constructor(props) {
     super(props);
     this.state = {
@@ -28,11 +29,18 @@ class VehicleList extends Component{
   };
 
   componentWillReceiveProps(nextProps) {
-    if(nextProps.data.networkStatus === 7 && this.props.data.loading) {
-      if (this.state.selectedVehicle === ''){
+    if (nextProps.data.networkStatus === 7 && this.props.data.loading) {
+      if (this.state.selectedVehicle === '') {
         this.setState({selectedVehicle: nextProps.data.allVehicles[0].id})
       }
     }
+  }
+
+  async componentWillMount() {
+    await Expo.Font.loadAsync({
+      'Roboto': require('native-base/Fonts/Roboto.ttf'),
+      'Roboto_medium': require('native-base/Fonts/Roboto_medium.ttf'),
+    });
   }
 
   onVehicleClick = () => {
@@ -41,53 +49,54 @@ class VehicleList extends Component{
   };
 
   render() {
-    const { navigate } = this.props.navigation;
+    const {navigate} = this.props.navigation;
 
     if (this.props.data && this.props.data.loading) {
       return (
-        <View style={styles.container}>
+        <Container style={styles.container}>
           <Text>Loading your data...</Text>
-        </View>
+        </Container>
       )
     }
 
     if (this.props.data && this.props.data.error) {
       return (
-        <View style={styles.container}>
+        <Container style={styles.container}>
           <Text>Error loading interface, please restart</Text>
-        </View>
+        </Container>
       )
     }
 
     const vehiclesToList = this.props.data.allVehicles;
 
     return (
-      <View style={styles.container}>
-        <Text style={styles.mainText}>Seleziona il tuo veicolo</Text>
-        <Picker
-          style={{width: 300}}
-          selectedValue={this.state.selectedVehicle}
-          onValueChange={(itemValue, itemIndex) => this.setState({selectedVehicle: itemValue})}
-        >
-          {vehiclesToList.map(vehicle => (
-            <Picker.Item key={vehicle.id} label={vehicle.radioCode} value={vehicle.id}/>
-          ))}
-        </Picker>
-        <Button
-          title='Conferma'
-          color='#4FFF3B'
-          onPress={this.onVehicleClick}
-        />
-      </View>
+      <Container style={styles.container}>
+          <Text>Seleziona il tuo veicolo</Text>
+          <Picker
+            style={{width: 300, height: 300}}
+            selectedValue={this.state.selectedVehicle}
+            onValueChange={(itemValue, itemIndex) => this.setState({selectedVehicle: itemValue})}
+          >
+            {vehiclesToList.map(vehicle => (
+              <Picker.Item key={vehicle.id} label={vehicle.radioCode} value={vehicle.id}/>
+            ))}
+          </Picker>
+          <Button iconRight block success transparent
+                  onPress={this.onVehicleClick}
+          >
+            <Text>Conferma veicolo</Text>
+            <Icon name='arrow-forward'/>
+          </Button>
+      </Container>
     )
   }
 }
 
 export default graphql(gql`
-   query getVehicles {
-    allVehicles{
-      id
-      radioCode
+    query getVehicles {
+        allVehicles{
+            id
+            radioCode
+        }
     }
-  }
 `)(VehicleList)
